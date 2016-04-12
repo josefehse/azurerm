@@ -1,0 +1,1 @@
+﻿Add-WindowsFeature Web-Server,web-mgmt-console
