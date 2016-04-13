@@ -1,0 +1,369 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "armdeploymentstorageaccountName": {
+      "type": "string",
+      "defaultValue": "devops041116"
+    },
+    "armdeploymentstorageaccountType": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_GRS",
+        "Standard_ZRS"
+      ]
+    },
+    "armdeploymentstorageaccountLocation": {
+      "type": "string",
+      "defaultValue": "East US",
+      "allowedValues": [
+        "East US",
+        "West US",
+        "West Europe",
+        "East Asia",
+        "South East Asia"
+      ]
+    },
+    "armdeploymentVNETLocation": {
+      "type": "string",
+      "defaultValue": "East US",
+      "allowedValues": [
+        "East US",
+        "West US",
+        "West Europe",
+        "East Asia",
+        "South East Asia"
+      ]
+    },
+    "armdeploymentVMPrefix": {
+      "type": "string",
+      "defaultValue": "devopsvm"
+    },
+    "armdeploymentVM1AdminUserName": {
+      "type": "string",
+      "defaultValue": "devopsadmin"
+    },
+    "armdeploymentVM1AdminPassword": {
+      "type": "securestring"
+    },
+    "armdeploymentVM1WindowsOSVersion": {
+      "type": "string",
+      "defaultValue": "2012-R2-Datacenter",
+      "allowedValues": [
+        "2008-R2-SP1",
+        "2012-Datacenter",
+        "2012-R2-Datacenter",
+        "Windows-Server-Technical-Preview"
+      ]
+    },
+    "MyAvailabilitySetName": {
+      "type": "string",
+      "defaultValue": "devopsavailset"
+    },
+    "MyAvailabilitySetLocation": {
+      "type": "string",
+      "defaultValue": "East US",
+      "allowedValues": [
+        "East US",
+        "West US",
+        "West Europe",
+        "East Asia",
+        "South East Asia"
+      ]
+    },
+    "workspaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "The Workspace ID is the Operations Management Suite Workspace ID found in the OMS Console under Settings and Connected Sources"
+      }
+    },
+    "workspaceKey": {
+      "type": "string",
+      "metadata": {
+        "description": "The Workspace Key is the Operations Management Suite Workspace Key found in the OMS Console under Settings and Connected Sources"
+      }
+    }
+  },
+  "variables": {
+    "numberOfInstances": 2,
+    "armdeploymentVNETName": "devopsvnet",
+    "armdeploymentVNETSubnet1Name": "Servers",
+    "armdeploymentVNETSubnet2Name": "Gateway",
+    "armdeploymentVM1ImagePublisher": "MicrosoftWindowsServer",
+    "armdeploymentVM1ImageOffer": "WindowsServer",
+    "armdeploymentVMOSDiskName": "armdeploymentVMOSDisk",
+    "armdeploymentVM1VmSize": "Standard_A2",
+    "armdeploymentVM1VnetID": "[resourceId('Microsoft.Network/virtualNetworks', variables('armdeploymentVNETName'))]",
+    "armdeploymentVM1SubnetRef": "[concat(variables('armdeploymentVM1VnetID'), '/subnets/', variables('armdeploymentVNETSubnet1Name'))]",
+    "armdeploymentVM1StorageAccountContainerName": "vhds",
+    "armdeploymentVMNicPrefix": "devopsvmnic",
+    "PublicIPName": "devopspublicip",
+    "PublicDNSName": "devopspublicname",
+    "LBName": "devopslb",
+    "lbID": "[resourceId('Microsoft.Network/loadBalancers',variables('LBName'))]",
+    "publicIPAddressID": "[resourceId('Microsoft.Network/publicIPAddresses',variables('PublicIPName'))]",
+    "nicId1": "[resourceId('Microsoft.Network/networkInterfaces',concat(variables('armdeploymentVMNicPrefix'), 0))]",
+    "nicId2": "[resourceId('Microsoft.Network/networkInterfaces',concat(variables('armdeploymentVMNicPrefix'), 1))]",
+    "frontEndIPConfigID": "[concat(variables('lbID'),'/frontendIPConfigurations/LBFE')]",
+    "backEndIPConfigID1": "[concat(variables('nicId1'),'/ipConfigurations/ipconfig1')]",
+    "backEndIPConfigID2": "[concat(variables('nicId2'),'/ipConfigurations/ipconfig1')]",
+    "lbPoolID": "[concat(variables('lbID'),'/backendAddressPools/LBBE')]",
+    "lbProbeID": "[concat(variables('lbID'),'/probes/tcpProbe')]"
+
+  },
+  "resources": [
+    {
+      "apiVersion": "2015-05-01-preview",
+      "copy": {
+        "name": "nicLoop",
+        "count": "[variables('numberOfInstances')]"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/loadBalancers/', variables('LBName'))]"
+      ],
+      "location": "[parameters('armdeploymentVNETLocation')]",
+      "name": "[concat(variables('armdeploymentVMNicPrefix'), copyindex())]",
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('armdeploymentVM1SubnetRef')]"
+              },
+              "loadBalancerBackendAddressPools": [
+                {
+                  "id": "[concat(variables('lbID'), '/backendAddressPools/LBBE')]"
+                }
+              ],
+              "loadBalancerInboundNatRules": [
+                {
+                  "id": "[concat(variables('lbID'),'/inboundNatRules/RDP-VM', copyindex())]"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "tags": {
+        "displayName": "armdeploymentVMNics"
+      },
+      "type": "Microsoft.Network/networkInterfaces"
+    },
+    {
+      "name": "[concat(parameters('armdeploymentVMPrefix'),copyindex())]",
+      "copy": {
+        "name": "virtualMachineLoop",
+        "count": "[variables('numberOfInstances')]"
+      },
+      "type": "Microsoft.Compute/virtualMachines",
+      "location": "[parameters('armdeploymentVNETLocation')]",
+      "apiVersion": "2015-05-01-preview",
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkInterfaces/', variables('armdeploymentVMNicPrefix'), copyindex())]",
+        "[concat('Microsoft.Compute/availabilitySets/', parameters('MyAvailabilitySetName'))]"
+
+      ],
+      "tags": {
+        "displayName": "armdeploymentVMs"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('armdeploymentVM1VmSize')]"
+        },
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets',parameters('MyAvailabilitySetName'))]"
+        },
+
+        "osProfile": {
+          "computerName": "[parameters('armdeploymentVMPrefix')]",
+          "adminUsername": "[parameters('armdeploymentVM1AdminUsername')]",
+          "adminPassword": "[parameters('armdeploymentVM1AdminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[variables('armdeploymentVM1ImagePublisher')]",
+            "offer": "[variables('armdeploymentVM1ImageOffer')]",
+            "sku": "[parameters('armdeploymentVM1WindowsOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "armdeploymentVM1OSDisk",
+            "vhd": {
+              "uri": "[concat('http://', parameters('armdeploymentstorageaccountName'), '.blob.core.windows.net/', variables('armdeploymentVM1StorageAccountContainerName'), '/', variables('armdeploymentVMOSDiskName'),copyindex(), '.vhd')]"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('armdeploymentVMNicPrefix'), copyindex()))]"
+            }
+          ]
+        }
+      },
+      "resources": [
+        {
+          "name": "Microsoft.EnterpriseCloud.Monitoring",
+          "type": "extensions",
+          "location": "[parameters('armdeploymentVNETLocation')]",
+          "apiVersion": "2015-06-15",
+          "dependsOn": [
+            "[concat('Microsoft.Compute/virtualMachines/', concat(parameters('armdeploymentVMPrefix'),copyindex()))]"
+          ],
+          "tags": {
+            "displayName": "OMSAgent"
+          },
+          "properties": {
+            "publisher": "Microsoft.EnterpriseCloud.Monitoring",
+            "type": "MicrosoftMonitoringAgent",
+            "typeHandlerVersion": "1.0",
+            "autoUpgradeMinorVersion": true,
+            "settings": {
+              "workspaceId": "[parameters('workspaceId')]"
+            },
+            "protectedSettings": {
+              "workspaceKey": "[parameters('workspaceKey')]"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "[variables('PublicIPName')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "location": "[parameters('armdeploymentVNETLocation')]",
+      "apiVersion": "2015-05-01-preview",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "PublicLBIP"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic",
+        "dnsSettings": {
+          "domainNameLabel": "[variables('PublicDNSName')]"
+        }
+      }
+    },
+    {
+      "apiVersion": "2015-05-01-preview",
+      "name": "[variables('lbName')]",
+      "tags": {
+        "displayName": "ExternalLoadBalancer"
+      },
+      "type": "Microsoft.Network/loadBalancers",
+      "location": "[parameters('armdeploymentVNETLocation')]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/publicIPAddresses/', variables('PublicIPName'))]"
+      ],
+      "properties": {
+        "backendAddressPools": [
+          {
+            "name": "LBBE",
+            "properties": {
+              "backendIPConfigurations": [
+                {
+                  "id": "[variables('backEndIPConfigID1')]"
+                },
+                {
+                  "id": "[variables('backEndIPConfigID2')]"
+                }
+              ]
+            }
+          }
+        ],
+        "frontendIPConfigurations": [
+          {
+            "name": "LBFE",
+            "properties": {
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('PublicIPName'))]"
+              }
+            }
+          }
+        ],
+        "inboundNatRules": [
+          {
+            "name": "RDP-VM0",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "backendIPConfiguration": {
+                "id": "[variables('backEndIPConfigID1')]"
+              },
+              "protocol": "tcp",
+              "frontendPort": 50001,
+              "backendPort": 3389,
+              "enableFloatingIP": false
+            }
+          },
+          {
+            "name": "RDP-VM1",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "backendIPConfiguration": {
+                "id": "[variables('backEndIPConfigID2')]"
+              },
+              "protocol": "tcp",
+              "frontendPort": 50002,
+              "backendPort": 3389,
+              "enableFloatingIP": false
+            }
+          }
+        ],
+        "loadBalancingRules": [
+          {
+            "name": "LBRule",
+            "properties": {
+              "frontendIPConfiguration": {
+                "id": "[variables('frontEndIPConfigID')]"
+              },
+              "backendAddressPool": {
+                "id": "[variables('lbPoolID')]"
+              },
+              "protocol": "tcp",
+              "frontendPort": 80,
+              "backendPort": 80,
+              "enableFloatingIP": false,
+              "idleTimeoutInMinutes": 5,
+              "probe": {
+                "id": "[variables('lbProbeID')]"
+              }
+            }
+          }
+        ],
+        "probes": [
+          {
+            "name": "tcpProbe",
+            "properties": {
+              "protocol": "tcp",
+              "port": 80,
+              "intervalInSeconds": 5,
+              "numberOfProbes": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "[parameters('MyAvailabilitySetName')]",
+      "type": "Microsoft.Compute/availabilitySets",
+      "location": "[parameters('MyAvailabilitySetLocation')]",
+      "apiVersion": "2015-05-01-preview",
+      "dependsOn": [ ],
+      "tags": {
+        "displayName": "MyAvailabilitySet"
+      }
+    }
+  ],
+      "outputs": {
+      }
+    }
