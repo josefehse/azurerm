@@ -1,0 +1,48 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+    "parameters": {
+        "azurebcvmnicNamePrefix": {
+            "type": "string",
+            "minLength": 1
+        }
+        
+    },
+  "variables": {
+    "machineCount": 2,
+    "azurebcvnetSubnet1Name": "Servers",
+    "azurebcvnetSubnet2Name": "GatewaySubnet",
+    "azurebcvmnicVnetID": "[resourceId('Microsoft.Network/virtualNetworks', 'azurebcvnet')]",
+    "azurebcvmnicSubnetRef": "[concat(variables('azurebcvmnicVnetID'), '/subnets/', variables('azurebcvnetSubnet1Name'))]"
+  },
+    "resources": [
+      {
+        "name": "[concat(parameters('azurebcvmnicNamePrefix'),copyindex())]",
+        "type": "Microsoft.Network/networkInterfaces",
+        "location": "[resourceGroup().location]",
+        "apiVersion": "2015-06-15",
+        "copy": {
+          "name": "nicLoop",
+          "count": "[variables('machineCount')]"
+        },
+        "tags": {
+          "displayName": "azurebcvmnics"
+        },
+        "properties": {
+          "ipConfigurations": [
+            {
+              "name": "ipconfig1",
+              "properties": {
+                "privateIPAllocationMethod": "Dynamic",
+                "subnet": {
+                  "id": "[variables('azurebcvmnicSubnetRef')]"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "outputs": {
+    }
+}
