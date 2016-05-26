@@ -51,15 +51,6 @@ break
 
 
 
-
-
-
-
-
-
-
-
-
 New-AzureRmResourceGroupDeployment -Name "DevOpsDeployment" -ResourceGroupName $rgName -TemplateUri https://raw.githubusercontent.com/josefehse/azurerm/master/Nics.Json
 
 break
